@@ -3,3 +3,4 @@ dataset/
 *.pyc
 *.mat
 *.npy
+experiments/Step_01/multi_effnet/best_model.keras
