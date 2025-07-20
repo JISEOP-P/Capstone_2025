@@ -2,15 +2,15 @@
 
            hello     1.0000    1.0000    1.0000         3
 nice to meet you     1.0000    1.0000    1.0000         3
-       thank you     1.0000    1.0000    1.0000         3
+       thank you     0.7500    1.0000    0.8571         3
    i respect you     1.0000    1.0000    1.0000         3
    sign language     1.0000    1.0000    1.0000         3
-      i love you     1.0000    1.0000    1.0000         3
+      i love you     1.0000    0.6667    0.8000         3
        take care     1.0000    1.0000    1.0000         3
        i'm sorry     1.0000    1.0000    1.0000         3
         be happy     1.0000    1.0000    1.0000         3
       no gesture     1.0000    1.0000    1.0000         3
 
-        accuracy                         1.0000        30
-       macro avg     1.0000    1.0000    1.0000        30
-    weighted avg     1.0000    1.0000    1.0000        30
+        accuracy                         0.9667        30
+       macro avg     0.9750    0.9667    0.9657        30
+    weighted avg     0.9750    0.9667    0.9657        30

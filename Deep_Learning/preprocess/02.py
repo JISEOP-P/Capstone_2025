@@ -8,8 +8,8 @@ from scipy.signal import windows
 from tqdm import tqdm
 
 # === Config ===
-RAW_DIR = "dataset/Test_N"
-SAVE_DIR = "dataset/preprocessed_02_TestN"
+RAW_DIR = "dataset/raw"
+SAVE_DIR = "dataset/preprocessed_02"
 LABEL_CSV = os.path.join(SAVE_DIR, "labels.csv")
 NUM_WORKERS = mp.cpu_count()
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -31,17 +31,6 @@ def save_label_csv(csv_path: str, base_filename: str, label: int) -> None:
         if write_header:
             writer.writerow(['file', 'label'])
         writer.writerow([base_filename, label])
-
-def adaptive_threshold_normalize(img):
-    mu = np.mean(img)
-    sigma = np.std(img)
-    thr = mu + sigma
-    img[img < thr] = 0
-    img = img - thr
-    img[img < 0] = 0
-    if np.max(img) != 0:
-        img = img / np.max(img)
-    return img
 
 def fast_cfar_2d(image, guard_cells=2, reference_cells=15, scale=1.5):
     M, N = image.shape
@@ -70,24 +59,6 @@ def fast_cfar_2d(image, guard_cells=2, reference_cells=15, scale=1.5):
     cfar_mask = (image > threshold_map).astype(np.float32)
 
     return cfar_mask
-
-# === MTI ===
-def frequency_weighted_mti(range_fft_frames, weight_ratio=0.5):
-    avg_spectrum = np.mean(np.abs(range_fft_frames), axis=0)
-    threshold = np.mean(avg_spectrum)
-    weights = np.where(avg_spectrum >= threshold, 1.0, weight_ratio)
-    mean_fft = np.mean(range_fft_frames, axis=0)
-    filtered_frames = []
-    for frame in range_fft_frames:
-        filtered = frame - weights * mean_fft
-        filtered_frames.append(filtered)
-    return np.stack(filtered_frames, axis=0)
-
-def temporal_mti(stack):
-    filtered = np.zeros_like(stack)
-    for t in range(1, stack.shape[0]):
-        filtered[t] = stack[t] - stack[t-1]
-    return filtered[1:]
 
 # === RTM/DTM ===
 def compute_rtm_dtm(frames, rx_index, top_k=10):
@@ -120,7 +91,7 @@ def compute_rtm_dtm(frames, rx_index, top_k=10):
         doppler_fft = np.fft.fftshift(np.fft.fft(doppler_input, axis=0), axes=0)
 
         # === magnitude + CFAR + log1p
-        doppler_mag = np.abs(doppler_fft)[128-112:128+112, :]
+        doppler_mag = np.abs(doppler_fft)
         cfar_mask = fast_cfar_2d(doppler_mag)
         doppler_mag = doppler_mag * cfar_mask
         doppler_mag = np.log1p(doppler_mag)
