@@ -24,7 +24,7 @@ class CustomBestModelSaver(Callback):
             print(f"[CUSTOM CHECKPOINT] Epoch {epoch+1}: 동률 정확도에서 낮은 손실 {val_loss:.4f} - 모델 저장!")
 
 def lr_schedule(epoch, lr):
-    if epoch == 50 or epoch == 75:
+    if epoch == 25:
     # if epoch == 100:
         return lr * 0.1
     return lr

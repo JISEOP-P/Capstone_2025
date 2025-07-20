@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 
 # ========== CONFIG ==========
-BASE_NAME = "GDN_0_s1_v4_026_G"
+BASE_NAME = "GDN_9_s1_v2_016_G"
 PREPROCESS_DIR = "dataset/preprocessed_02"
 SAVE_DIR = "Test_plots"
 os.makedirs(SAVE_DIR, exist_ok=True)
