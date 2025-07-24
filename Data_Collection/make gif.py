@@ -4,7 +4,7 @@ from PIL import Image
 import io
 
 # 데이터 로드
-frames = np.load("Data_Collection/GDN_6_s1_v1_003_D.npy")  # shape: (50, 3, 256, 128)
+frames = np.load("Data_Collection/GDN_14_s4_v2_014_N.npy")  # shape: (50, 3, 256, 128)
 image_frames = []
 
 # sensor config
