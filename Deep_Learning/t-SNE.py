@@ -6,9 +6,9 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
 # === 설정 ===
-npy_dir = "dataset/preprocessed_02"  # 변경 가능
+npy_dir = "dataset/preprocessed"  # 변경 가능
 label_csv = os.path.join(npy_dir, "labels.csv")
-save_path = os.path.join("tsne_rtm_dtm_comb.png")
+save_path = os.path.join("tsne.png")
 
 # === 데이터 로딩 ===
 def load_rtm_dtm_combined(npy_dir, label_csv):

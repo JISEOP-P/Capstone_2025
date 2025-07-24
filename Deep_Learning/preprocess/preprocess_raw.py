@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 # === Config ===
 RAW_DIR = "dataset/raw"
-SAVE_DIR = "dataset/preprocessed_02"
+SAVE_DIR = "dataset/preprocessed"
 LABEL_CSV = os.path.join(SAVE_DIR, "labels.csv")
 NUM_WORKERS = mp.cpu_count()
 os.makedirs(SAVE_DIR, exist_ok=True)

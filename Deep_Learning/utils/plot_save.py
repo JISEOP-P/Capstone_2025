@@ -7,7 +7,7 @@ from sklearn.metrics import classification_report
 
 def smooth_curve(x):
     """Kaiser 윈도우 기반 smoothing 함수"""
-    window_len = 4
+    window_len = 3
     if len(x) < window_len:
         return x
     s = np.r_[x[window_len-1:0:-1], x, x[-1:-window_len:-1]]
@@ -28,9 +28,9 @@ def plot_training_curve(history, model_dir, smooth=True):
 
     # Accuracy
     axs[0].plot(maybe_smooth(history.history['accuracy']), label='Train Acc',
-                marker='.', markevery=3)
+                marker='o', markevery=2, markersize=5)
     axs[0].plot(maybe_smooth(history.history['val_accuracy']), label='Val Acc',
-                marker='.', markevery=3)
+                marker='o', markevery=2, markersize=5)
     axs[0].set_title('Accuracy')
     axs[0].set_xlabel('Epoch')
     axs[0].set_ylabel('Accuracy')
@@ -39,9 +39,9 @@ def plot_training_curve(history, model_dir, smooth=True):
 
     # Loss
     axs[1].plot(maybe_smooth(history.history['loss']), label='Train Loss',
-                marker='v', markevery=3, markersize=4)
+                marker='v', markevery=2, markersize=6)
     axs[1].plot(maybe_smooth(history.history['val_loss']), label='Val Loss',
-                marker='v', markevery=3, markersize=4)
+                marker='v', markevery=2, markersize=6)
     axs[1].set_title('Loss')
     axs[1].set_xlabel('Epoch')
     axs[1].set_ylabel('Loss')
