@@ -2,7 +2,7 @@ import os
 from collections import defaultdict, Counter
 
 # 경로 설정
-DATA_DIR = os.path.join("..", "Data_Collection", "Data_Collection_D")
+DATA_DIR = os.path.join("./Deep_Learning/dataset/raw")
 
 # 라벨 기준(X값)으로 피실험자 카운트 저장용
 label_participant_count = defaultdict(lambda: Counter())
