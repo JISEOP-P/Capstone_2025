@@ -4,7 +4,7 @@ import os
 from glob import glob
 
 # ========== CONFIG ==========
-RAW_SAMPLE_DIR = "dataset/raw_sample"
+RAW_SAMPLE_DIR = "dataset/raw"
 PREPROCESS_DIR = "dataset/preprocessed"
 SAVE_DIR = "plots"
 os.makedirs(SAVE_DIR, exist_ok=True)

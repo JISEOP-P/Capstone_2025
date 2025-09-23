@@ -32,36 +32,8 @@ def save_label_csv(csv_path: str, base_filename: str, label: int) -> None:
             writer.writerow(['file', 'label'])
         writer.writerow([base_filename, label])
 
-def fast_cfar_2d(image, guard_cells=2, reference_cells=15, scale=1.5):
-    M, N = image.shape
-
-    total_cells = (reference_cells * 2 + guard_cells * 2 + 1) ** 2
-    guard_cells_count = (guard_cells * 2 + 1) ** 2
-
-    num_reference_cells = total_cells - guard_cells_count
-
-    # make kernel (1s everywhere except guard + CUT area)
-    kernel_size = reference_cells * 2 + guard_cells * 2 + 1
-    kernel = np.ones((kernel_size, kernel_size), dtype=np.float32)
-
-    # zero out guard + CUT region
-    start = reference_cells
-    end = reference_cells + 2 * guard_cells + 1
-    kernel[start:end, start:end] = 0
-
-    # compute local sum using convolution
-    local_sum = cv2.filter2D(image, -1, kernel, borderType=cv2.BORDER_REFLECT)
-    noise_level = local_sum / num_reference_cells
-
-    threshold_map = noise_level * scale
-
-    # apply threshold
-    cfar_mask = (image > threshold_map).astype(np.float32)
-
-    return cfar_mask
-
 # === RTM/DTM ===
-def compute_rtm_dtm(frames, rx_index, top_k=10):
+def compute_rtm_dtm(frames, rx_index, top_k=1):
     raw_stack = frames[:, :, :, rx_index]  # (50, 256, 128)
     T = raw_stack.shape[0]
     rdi_stack = []
@@ -90,10 +62,8 @@ def compute_rtm_dtm(frames, rx_index, top_k=10):
         # === Doppler FFT
         doppler_fft = np.fft.fftshift(np.fft.fft(doppler_input, axis=0), axes=0)
 
-        # === magnitude + CFAR + log1p
+        # === magnitude + log1p
         doppler_mag = np.abs(doppler_fft)
-        cfar_mask = fast_cfar_2d(doppler_mag)
-        doppler_mag = doppler_mag * cfar_mask
         doppler_mag = np.log1p(doppler_mag)
 
         rdi_stack.append(doppler_mag)

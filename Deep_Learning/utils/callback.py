@@ -25,6 +25,6 @@ class CustomBestModelSaver(Callback):
 
 def lr_schedule(epoch, lr):
     if epoch == 35:
-    # if epoch == 100:
+    # # if epoch == 100:
         return lr * 0.1
     return lr
