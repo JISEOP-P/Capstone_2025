@@ -1,6 +1,6 @@
 from __future__ import annotations
 """
-Realtime Radar GUI — 4s Capture / 1s Pause+Inference (PyQt5 + pyqtgraph + ONNXRuntime)
+Realtime Radar GUI — 4s Capture / 1s Pause+Inference (PyQt5 + pyqtgraph + ONNXRuntime + TTS)
 
  (1) 실시간 RD(2D FFT + log) 영상
  (2) 터미널: CAPTURE=“Sensing...”/“Next Sign Sensing...”, PAUSE=“Ready For Inference”,
@@ -10,6 +10,7 @@ Realtime Radar GUI — 4s Capture / 1s Pause+Inference (PyQt5 + pyqtgraph + ONNX
 Start / Pause / Resume / Stop 버튼: Stop은 프로그램 종료.
 
 ※ 모델은 '로짓 ONNX' 기준. (Softmax는 런타임에서 계산)
+※ TTS: pyttsx3 기반, 한국어(가능 시) 음성 선택, 3초 하드캡(+길이 기반 속도 보정), <무동작> 미발화
 """
 
 import os
@@ -29,6 +30,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 
 import onnxruntime as ort
+import pyttsx3  # TTS
 
 from ifxradarsdk import get_version_full
 from ifxradarsdk.fmcw import DeviceFmcw
@@ -283,13 +285,130 @@ class InferenceWorker(QtCore.QThread):
     def stop(self):
         self._running = False
 
+# ============================ TTS Worker ===================================
+class TTSWorker(QtCore.QThread):
+    """
+    비동기 TTS 재생기.
+    - enqueue(text)로 한국어 문장을 넣으면 순차적으로 읽어줍니다.
+    - 3초 하드캡(환경변수 TTS_MAX_SECS, 기본 2.9s)
+    - 길이 기반 속도 보정 + 기본 rate(환경변수 TTS_RATE, 기본 210)
+    - 가능한 경우 한국어 음성을 자동 선택
+    - 중요: 모든 엔진 호출은 이 스레드 안에서만 수행 (타이머 스레드에서 stop 금지)
+    """
+    def __init__(self, rate: int | None = None, volume: float = 1.0):
+        super().__init__()
+        self._queue: Deque[str] = deque()
+        self._qlock = threading.Lock()
+        self._running = True
+
+        self.max_secs = float(os.environ.get("TTS_MAX_SECS", "2.9"))
+        self._default_rate = int(os.environ.get("TTS_RATE", str(rate if rate is not None else 210)))
+
+        self._engine = pyttsx3.init()
+        # 한국어 음성 우선 선택
+        try:
+            ko_voice_id = None
+            for v in self._engine.getProperty("voices"):
+                meta = " ".join([
+                    getattr(v, "name", "") or "",
+                    getattr(v, "id", "") or "",
+                    " ".join(getattr(v, "languages", []) or []),
+                ]).lower()
+                if "ko" in meta or "korean" in meta or "kor" in meta:
+                    ko_voice_id = v.id
+                    break
+            if ko_voice_id:
+                self._engine.setProperty("voice", ko_voice_id)
+        except Exception:
+            pass
+
+        self._engine.setProperty("rate", self._default_rate)
+        self._engine.setProperty("volume", volume)
+
+    def enqueue(self, text: str):
+        if not text:
+            return
+        with self._qlock:
+            self._queue.append(text)
+
+    def _speak_with_timeout(self, text: str):
+        # 글자수에 따른 속도 보정 (3초 내 수렴 유도)
+        try:
+            n = len(text)
+            if n > 12:
+                self._engine.setProperty("rate", min(self._default_rate + 40, 260))
+            elif n > 8:
+                self._engine.setProperty("rate", min(self._default_rate + 20, 240))
+            else:
+                self._engine.setProperty("rate", self._default_rate)
+        except Exception:
+            pass
+
+        # 같은 스레드에서 루프 시작/반복/종료
+        self._engine.say(text)
+        start = time.time()
+        try:
+            self._engine.startLoop(False)  # 비차단 루프 시작
+            # busy 동안 iterate()로 펌핑
+            while self._running and self._engine.isBusy():
+                now = time.time()
+                if (now - start) >= self.max_secs:
+                    # 하드캡: 루프 종료 시도
+                    try:
+                        self._engine.endLoop()
+                    except Exception:
+                        pass
+                    # 루프 종료 직후 busy 잔여 시 1회 stop (같은 스레드!)
+                    try:
+                        if self._engine.isBusy():
+                            self._engine.stop()
+                    except Exception:
+                        pass
+                    return
+                try:
+                    self._engine.iterate()
+                except Exception:
+                    break
+                # CPU 과점유 방지
+                time.sleep(0.01)
+        finally:
+            # 자연 종료 케이스: 안전하게 endLoop
+            try:
+                self._engine.endLoop()
+            except Exception:
+                pass
+
+    def run(self):
+        while self._running:
+            text = None
+            with self._qlock:
+                if self._queue:
+                    text = self._queue.popleft()
+            if text is None:
+                self.msleep(20)
+                continue
+            try:
+                self._speak_with_timeout(text)
+            except Exception:
+                # 엔진 오류 발생 시 다음 항목으로 진행
+                pass
+
+    def stop(self):
+        self._running = False
+        try:
+            # 현재 루프를 깨우기 위해 같은 스레드 컨텍스트에서 stop/endLoop 시도
+            self._engine.stop()
+        except Exception:
+            pass
+
+
 # ============================ UI Widgets ==================================
 class TerminalWidget(QtWidgets.QPlainTextEdit):
     def __init__(self):
         super().__init__()
         self.setReadOnly(True)
         self.document().setMaximumBlockCount(3000)
-        self.setFont(QtGui.QFont("Consolas", 10))
+        self.setFont(QtGui.QFont("Consolas", 15))
 
     def append_line(self, text: str):
         self.appendPlainText(text)
@@ -300,7 +419,7 @@ class Banner(QtWidgets.QLabel):
     def __init__(self):
         super().__init__("—")
         self.setAlignment(QtCore.Qt.AlignCenter)
-        self.setFont(QtGui.QFont("Noto Sans CJK KR", 30, QtGui.QFont.Bold))
+        self.setFont(QtGui.QFont("Noto Sans CJK KR", 45, QtGui.QFont.Bold))
         self.setStyleSheet(
             "padding:12px; border:2px solid #444; border-radius:12px;"
             "background-color:#0b0b0b; color:#f2f2f2;"
@@ -345,7 +464,6 @@ class PhaseStrip(QtWidgets.QLabel):
         if self._mode == PhaseStrip.Mode.CAPTURE:
             self._dot = (self._dot + 1) % 3
             self._render()
-        # 다른 모드는 고정 표시
 
     def _render(self):
         if self._mode == PhaseStrip.Mode.CAPTURE:
@@ -379,8 +497,7 @@ class LiveImage(pg.GraphicsLayoutWidget):
 
         # viridis LUT 적용
         import matplotlib.cm as cm
-        import matplotlib.pyplot as plt
-        viridis = cm.get_cmap('viridis', 256)  # 256단계 viridis
+        viridis = cm.get_cmap('viridis', 256)
         lut = (viridis(np.linspace(0, 1, 256))[:, :3] * 255).astype(np.ubyte)
         self.img.setLookupTable(lut)
 
@@ -390,7 +507,6 @@ class LiveImage(pg.GraphicsLayoutWidget):
     def clear_image(self):
         self.img.clear()
 
-
 # ============================ State Machine ===============================
 class Phase(Enum):
     CAPTURE = auto()
@@ -399,7 +515,7 @@ class Phase(Enum):
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("IFX Radar — 4s Capture / 1s Pause+Infer (ONNX)")
+        self.setWindowTitle("IFX Radar — 4s Capture / 1s Pause+Infer (ONNX + TTS)")
         self.resize(1380, 900)
 
         # Layout
@@ -408,9 +524,9 @@ class MainWindow(QtWidgets.QMainWindow):
         h = QtWidgets.QHBoxLayout(central)
 
         # 좌: 라이브 영상(좁게)
-        self.live = LiveImage(); h.addWidget(self.live, 2)   # 3 -> 2
+        self.live = LiveImage(); h.addWidget(self.live, 2)
         # 우: 터미널 + (4)상태 + (3)배너 (넓게)
-        right = QtWidgets.QWidget(); h.addWidget(right, 3)   # 2 -> 3
+        right = QtWidgets.QWidget(); h.addWidget(right, 3)
         v = QtWidgets.QVBoxLayout(right)
 
         # --- Control bar (Start / Pause / Resume / Stop) ---
@@ -421,16 +537,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_resume = QtWidgets.QPushButton("Resume")
         self.btn_stop   = QtWidgets.QPushButton("Stop")
         ch.addWidget(self.btn_start); ch.addWidget(self.btn_pause)
-        ch.addWidget(self.btn_resume); ch.addWidget(self.btn_stop); ch.addStretch(1)
-        # initial states
-        self.btn_start.setEnabled(True)
-        self.btn_pause.setEnabled(False)
-        self.btn_resume.setEnabled(False)
-        self.btn_stop.setEnabled(False)
+        ch.addWidget(self.btn_resume); ch.addWidget(self.btn_stop)
 
+        # TTS 토글 추가
+        self.chk_tts = QtWidgets.QCheckBox("TTS (KO) On")
+        self.chk_tts.setChecked(True)
+        ch.addWidget(self.chk_tts); ch.addStretch(1)
+
+        # 버튼 스타일
         for btn in [self.btn_start, self.btn_pause, self.btn_resume, self.btn_stop]:
             btn.setMinimumHeight(60)
-            btn.setMinimumWidth(195)
+            btn.setMinimumWidth(240)
             btn.setFont(QtGui.QFont("Noto Sans CJK KR", 15, QtGui.QFont.Bold))
 
         # (2) 터미널
@@ -450,7 +567,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.device.set_acquisition_sequence(self.sequence)
         self.term.append_line(f"SDK: {get_version_full()}")
         self.term.append_line(f"Sensor: {self.device.get_sensor_type()}")
-        self.term.append_line("="*100)
+        self.term.append_line("="*70)
 
         # Timers
         self.ui_timer = QtCore.QTimer(self)
@@ -469,6 +586,29 @@ class MainWindow(QtWidgets.QMainWindow):
         self.inf = InferenceWorker()
         self.inf.result_ready.connect(self._on_infer_done)
         self.inf.start()
+
+        # TTS 워커
+        self.tts = TTSWorker(rate=None, volume=1.0)
+        self.tts.start()
+        self._last_spoken = None
+        self._tts_blocklist = {"<무동작>"}  # 무동작은 읽지 않음
+        # TTS 별칭(축약) 맵 — 필요 시 자유롭게 추가/수정
+        self._tts_alias = {
+            "수어(수화)": "수화",
+            "맛있게 드세요.": "맛있게 드세요",
+            "만나서 반갑습니다.": "만나서 반갑습니다",
+            "아하, 알겠습니다.": "아하, 알겠습니다",
+            "이해가 됩니다.": "이해가 됩니다",
+            "몸 건강하세요.": "몸 건강하세요.",
+            "안녕하세요.": "안녕하세요",
+            "감사합니다.": "감사합니다",
+            "환영합니다.": "환영합니다",
+            "행복하세요.": "행복하세요",
+            "존경합니다.": "존경합니다",
+            "사랑합니다.": "사랑합니다",
+            "미안합니다.": "미안합니다",
+            "안녕히 가세요.": "안녕히 가세요",
+        }
 
         # Buffers/state
         self.frames_buf: List[np.ndarray] = []
@@ -491,7 +631,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # 라벨 매핑 표 출력
         for i, (en, ko) in enumerate(zip(CLASSES_EN, CLASSES_KO)):
             self.term.append_line(f"Label {i:02d}: \"{en}\" / {ko}")
-        self.term.append_line("="*100)
+        self.term.append_line("="*70)
 
     # ------------------------ Phase control ------------------------
     def _set_phase(self, phase: Phase):
@@ -507,14 +647,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.frames_buf.clear()
             self.live_queue.clear()
 
-            # 배너는 '상태' 문구를 쓰지 않고 이전 결과 유지
-            # 상태는 (4)에서만
             self.phase_strip.set_mode(PhaseStrip.Mode.CAPTURE)
 
             if self._cycle == 0:
                 self.term.append_line("[CAPTURE] Sensing started (4s)")
             else:
-                self.term.append_line("="*100)
+                self.term.append_line("="*70)
                 self.term.append_line("[CAPTURE] Next Sign Sensing... (4s)")
 
             if not self.ui_timer.isActive():
@@ -592,7 +730,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # 배너에는 결과(한/영)만 표기
         self.banner.set_text(f"{top_ko}\n{top_en}")
-        # (4) 상태창은 현재 Phase에 따라 유지됨
+
+        # === TTS: 한국어 Top-1 읽기 (무동작 미발화, 중복 방지, Paused 시 미재생) ===
+        if (not self._paused) and self.chk_tts.isChecked():
+            if top_ko not in self._tts_blocklist:
+                say_text = self._tts_alias.get(top_ko, top_ko)  # 별칭 치환(축약)
+                if say_text:
+                    self.tts.enqueue(say_text)
 
     # ------------------------ Controls -----------------------------
     def _on_start_clicked(self):
@@ -604,10 +748,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_resume.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.statusBar().showMessage("Running")
-
-        # 배너는 이전 결과 유지, (4)는 상태만
         self.phase_strip.set_mode(PhaseStrip.Mode.CAPTURE)
-
         self._cycle = 0 if self.phase is None else self._cycle
         self._set_phase(Phase.CAPTURE)
 
@@ -624,8 +765,8 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         self.statusBar().showMessage("Paused — press Resume")
 
-        self.banner.set_text("Paused")                 # (3)
-        self.phase_strip.set_mode(PhaseStrip.Mode.PAUSED)  # (4)
+        self.banner.set_text("Paused")                      # (3)
+        self.phase_strip.set_mode(PhaseStrip.Mode.PAUSED)   # (4)
 
         self.term.append_line("[PAUSE] All stopped by user")
         self.btn_start.setEnabled(False)
@@ -642,10 +783,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_resume.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.statusBar().showMessage("Running")
-
-        # 배너는 이전 결과 유지, (4)는 상태만
         self.phase_strip.set_mode(PhaseStrip.Mode.CAPTURE)
-
         self._set_phase(Phase.CAPTURE)
 
     def _on_stop_clicked(self):
@@ -662,6 +800,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
             try:
                 self.device.close()
+            except Exception:
+                pass
+            # TTS 정리
+            try:
+                self.tts.stop()
+                self.tts.wait(1000)
             except Exception:
                 pass
         finally:
