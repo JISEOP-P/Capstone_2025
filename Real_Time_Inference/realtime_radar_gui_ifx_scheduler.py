@@ -36,6 +36,7 @@ from ifxradarsdk import get_version_full
 from ifxradarsdk.fmcw import DeviceFmcw
 from ifxradarsdk.fmcw.types import FmcwSimpleSequenceConfig, FmcwSequenceChirp
 
+
 # ============================ User/Model Config ============================
 NUM_CLASSES = 15
 
@@ -408,7 +409,7 @@ class TerminalWidget(QtWidgets.QPlainTextEdit):
         super().__init__()
         self.setReadOnly(True)
         self.document().setMaximumBlockCount(3000)
-        self.setFont(QtGui.QFont("Consolas", 15))
+        self.setFont(QtGui.QFont("Consolas", 8))
 
     def append_line(self, text: str):
         self.appendPlainText(text)
@@ -419,7 +420,7 @@ class Banner(QtWidgets.QLabel):
     def __init__(self):
         super().__init__("—")
         self.setAlignment(QtCore.Qt.AlignCenter)
-        self.setFont(QtGui.QFont("Noto Sans CJK KR", 45, QtGui.QFont.Bold))
+        self.setFont(QtGui.QFont("Noto Sans CJK KR", 30, QtGui.QFont.Bold))
         self.setStyleSheet(
             "padding:12px; border:2px solid #444; border-radius:12px;"
             "background-color:#0b0b0b; color:#f2f2f2;"
@@ -495,10 +496,10 @@ class LiveImage(pg.GraphicsLayoutWidget):
         self.img.setLevels((0.0, 1.0))
         v.addItem(self.img)
 
-        # viridis LUT 적용
+        # 컬러맵 LUT 적용
         import matplotlib.cm as cm
-        viridis = cm.get_cmap('viridis', 256)
-        lut = (viridis(np.linspace(0, 1, 256))[:, :3] * 255).astype(np.ubyte)
+        cmap = cm.get_cmap('turbo', 256)
+        lut = (cmap(np.linspace(0, 1, 256))[:, :3] * 255).astype(np.ubyte)
         self.img.setLookupTable(lut)
 
     def set_image(self, arr: np.ndarray):
@@ -523,10 +524,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
         h = QtWidgets.QHBoxLayout(central)
 
-        # 좌: 라이브 영상(좁게)
-        self.live = LiveImage(); h.addWidget(self.live, 2)
-        # 우: 터미널 + (4)상태 + (3)배너 (넓게)
-        right = QtWidgets.QWidget(); h.addWidget(right, 3)
+        # 좌: 라이브 영상
+        self.live = LiveImage(); h.addWidget(self.live, 1)
+        # 우: 터미널 + (4)상태 + (3)배너
+        right = QtWidgets.QWidget(); h.addWidget(right, 1)
         v = QtWidgets.QVBoxLayout(right)
 
         # --- Control bar (Start / Pause / Resume / Stop) ---
@@ -547,7 +548,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # 버튼 스타일
         for btn in [self.btn_start, self.btn_pause, self.btn_resume, self.btn_stop]:
             btn.setMinimumHeight(60)
-            btn.setMinimumWidth(240)
+            btn.setMinimumWidth(180)
             btn.setFont(QtGui.QFont("Noto Sans CJK KR", 15, QtGui.QFont.Bold))
 
         # (2) 터미널
