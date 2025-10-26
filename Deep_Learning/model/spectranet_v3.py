@@ -169,9 +169,51 @@ def build_spectranet_v3(input_shapes: Dict[str, Any] = None,
 
 # 테스트
 if __name__ == "__main__":
+    import tensorflow as tf
+    from tensorflow.python.profiler.model_analyzer import profile
+    from tensorflow.python.profiler.option_builder import ProfileOptionBuilder
+
+    # 입력 형태 정의
     input_shapes = {
         'rtm_input': (224, 224, 3),
         'dtm_input': (224, 224, 3),
     }
+
+    # 모델 생성
     model = build_spectranet_v3(input_shapes=input_shapes, cfg=DEFAULT_CFG, num_classes=15)
     model.summary()
+
+    # ----------------------------
+    # 파라미터 수 계산
+    # ----------------------------
+    total_params = model.count_params()
+    print("\n================ Parameter Info ================")
+    print(f"Total params: {total_params:,}")
+
+    # ----------------------------
+    # FLOPs 계산 (TensorFlow Profiler)
+    # ----------------------------
+    # ConcreteFunction 생성
+    concrete_func = tf.function(model).get_concrete_function(
+        [tf.TensorSpec([1, *input_shapes['rtm_input']], tf.float32),
+         tf.TensorSpec([1, *input_shapes['dtm_input']], tf.float32)]
+    )
+
+    # 그래프 객체를 명시적으로 전달해야 함 (TF2.13 이상)
+    graph = concrete_func.graph
+
+    # 프로파일 실행
+    flops_info = profile(graph, options=ProfileOptionBuilder.float_operation())
+    flops = flops_info.total_float_ops
+
+    print("\n================ Computation Info ================")
+    if flops >= 1e9:
+        print(f"FLOPs : {flops / 1e9:.3f} GFLOPs (batch=1 기준)")
+    elif flops >= 1e6:
+        print(f"FLOPs : {flops / 1e6:.3f} MFLOPs (batch=1 기준)")
+    else:
+        print(f"FLOPs : {flops:.3f} FLOPs (batch=1 기준)")
+
+    print("──────────────────────────────────────────────")
+    print("SpectraNet successfully profiled ✅")
+    print("──────────────────────────────────────────────")

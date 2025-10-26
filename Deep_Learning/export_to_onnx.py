@@ -12,7 +12,7 @@ model = build_spectranet_v3(
     cfg=DEFAULT_CFG, num_classes=NUM_CLASSES
 )
 
-WEIGHTS = "experiments/Step_02/spectranet_v3/best_model.keras"
+WEIGHTS = "experiments/Step_03/spectranet_v3/best_model.keras"
 if os.path.exists(WEIGHTS):
     model.load_weights(WEIGHTS)
     print(f"[OK] loaded: {WEIGHTS}")
